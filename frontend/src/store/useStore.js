@@ -4,6 +4,7 @@ import { api } from '../lib/api';
 export const useStore = create((set, get) => ({
   user: null,
   tasks: [],
+  tasksAll: [],
   users: [],
   pagination: { page: 1, limit: 12, total: 0, pages: 1 },
   loading: false,
@@ -47,7 +48,7 @@ export const useStore = create((set, get) => ({
     try {
       const filters = {
         page: get().selectedPage,
-        limit: 12,
+        limit: get().pagination?.limit || 12,
         ...Object.fromEntries(
           Object.entries(get().filters).filter(([k, v]) => v && v !== 'All')
         )
@@ -59,6 +60,50 @@ export const useStore = create((set, get) => ({
       set({
         tasks: response.data || [],
         pagination: response.pagination || { page: 1, limit: 12, total: 0, pages: 1 },
+        loading: false
+      });
+      return response;
+    } catch (error) {
+      set({ error: error.message, loading: false });
+      throw error;
+    }
+  },
+
+  fetchTasksAll: async () => {
+    set({ loading: true, error: null });
+    try {
+      const filters = {
+        page: 1,
+        limit: 1000,
+        ...Object.fromEntries(
+          Object.entries(get().filters).filter(([k, v]) => v && v !== 'All')
+        )
+      };
+
+      const response = await api.getTasks(filters);
+      if (response.error) throw new Error(response.error);
+
+      set({
+        tasksAll: response.data || [],
+        loading: false
+      });
+      return response;
+    } catch (error) {
+      set({ error: error.message, loading: false });
+      throw error;
+    }
+  },
+
+  fetchAllTasks: async () => {
+    set({ loading: true, error: null });
+    try {
+      const filters = { page: 1, limit: 1000 }; // large limit for demo / inspection
+      const response = await api.getTasks(filters);
+      if (response.error) throw new Error(response.error);
+
+      set({
+        tasks: response.data || [],
+        pagination: response.pagination || { page: 1, limit: response.data?.length || 1000, total: response.data?.length || 0, pages: 1 },
         loading: false
       });
       return response;
@@ -137,6 +182,10 @@ export const useStore = create((set, get) => ({
 
   setActiveView: (activeView) => {
     set({ activeView });
+  },
+
+  setPageLimit: (limit) => {
+    set({ pagination: { ...(get().pagination || {}), limit } });
   },
 
   setFilters: (filters) => {
