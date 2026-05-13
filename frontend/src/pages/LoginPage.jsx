@@ -75,11 +75,11 @@ export default function LoginPage() {
           <p className="text-sm text-gray-600 text-center mb-3">Demo Users:</p>
           <div className="space-y-2">
             {[
-              { name: 'Alice (Admin)', email: 'user1@taskflow.com' },
-              { name: 'Bob', email: 'user2@taskflow.com' },
-              { name: 'Carol', email: 'user3@taskflow.com' },
-              { name: 'David', email: 'user4@taskflow.com' },
-              { name: 'Emma', email: 'user5@taskflow.com' }
+              { name: 'Admin', email: 'user1@taskflow.com' },
+              { name: 'User 2', email: 'user2@taskflow.com' },
+              { name: 'User 3', email: 'user3@taskflow.com' },
+              { name: 'User 4', email: 'user4@taskflow.com' },
+              { name: 'User 5', email: 'user5@taskflow.com' }
             ].map((user) => (
               <button
                 key={user.email}

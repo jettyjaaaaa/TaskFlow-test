@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   DndContext,
+  DragOverlay,
   closestCenter,
   KeyboardSensor,
   PointerSensor,
@@ -14,7 +15,8 @@ import TaskCard from '../components/TaskCard';
 import TaskDetailModal from '../components/TaskDetailModal';
 import CreateTaskModal from '../components/CreateTaskModal';
 import SkeletonLoader from '../components/SkeletonLoader';
-import { Plus, Search } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus, Search, X } from 'lucide-react';
+import { getAvatarUrl } from '../lib/avatar';
 
 export default function Dashboard() {
   const {
@@ -25,10 +27,12 @@ export default function Dashboard() {
     fetchUsers,
     updateTask,
     deleteTask,
-    setFilters,
     setSelectedPage,
     selectedPage,
-    filters
+    pagination,
+    activeView,
+    filters,
+    user
   } = useStore();
 
   const [selectedTask, setSelectedTask] = useState(null);
@@ -37,6 +41,7 @@ export default function Dashboard() {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
   const [priorityFilter, setPriorityFilter] = useState('All');
+  const [activeId, setActiveId] = useState(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -51,26 +56,73 @@ export default function Dashboard() {
     fetchUsers();
   }, []);
 
-  // Apply filters
-  useEffect(() => {
-    const newFilters = {};
-    if (searchQuery) newFilters.search = searchQuery;
-    if (statusFilter !== 'All') newFilters.status = statusFilter;
-    if (priorityFilter !== 'All') newFilters.priority = priorityFilter;
-    setFilters(newFilters);
-  }, [searchQuery, statusFilter, priorityFilter]);
-
   // Refetch when filters change
   useEffect(() => {
     fetchTasks();
   }, [filters, selectedPage]);
 
+  const clearBoardFilters = () => {
+    setSearchQuery('');
+    setStatusFilter('All');
+    setPriorityFilter('All');
+  };
+
+  const filteredTasks = useMemo(() => {
+    const normalizedSearch = searchQuery.toLowerCase().trim();
+
+    return tasks.filter((task) => {
+      const assignees = task.task_assignments?.map((assignment) => assignment.users).filter(Boolean) || [];
+      const matchesStatus = statusFilter === 'All' || task.status === statusFilter;
+      const matchesPriority = priorityFilter === 'All' || task.priority === priorityFilter;
+
+      if (!normalizedSearch) {
+        return matchesStatus && matchesPriority;
+      }
+
+      const haystack = [
+        task.title,
+        task.description,
+        task.project_name,
+        task.tag,
+        task.priority,
+        task.status,
+        task.due_date,
+        ...assignees.map((assignee) => assignee.name),
+        ...assignees.map((assignee) => assignee.email)
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+
+      return matchesStatus && matchesPriority && haystack.includes(normalizedSearch);
+    });
+  }, [tasks, searchQuery, statusFilter, priorityFilter]);
+
   // Group tasks by status
   const groupedTasks = {
-    'To Do': tasks.filter(t => t.status === 'To Do'),
-    'In Progress': tasks.filter(t => t.status === 'In Progress'),
-    'Done': tasks.filter(t => t.status === 'Done')
+    'To Do': filteredTasks.filter(t => t.status === 'To Do'),
+    'In Progress': filteredTasks.filter(t => t.status === 'In Progress'),
+    'Done': filteredTasks.filter(t => t.status === 'Done')
   };
+
+  const teamMembers = useMemo(() => users, [users]);
+  const totalPages = pagination?.pages || 1;
+  const pageNumbers = useMemo(() => {
+    const visiblePages = [];
+    const start = Math.max(1, selectedPage - 1);
+    const end = Math.min(totalPages, start + 2);
+
+    for (let page = start; page <= end; page += 1) {
+      visiblePages.push(page);
+    }
+
+    if (visiblePages.length < 3 && totalPages > 3) {
+      const extraStart = Math.max(1, totalPages - 2);
+      return Array.from({ length: Math.min(3, totalPages) }, (_, index) => extraStart + index);
+    }
+
+    return visiblePages;
+  }, [selectedPage, totalPages]);
 
   const handleDragEnd = async (event) => {
     const { active, over } = event;
@@ -85,6 +137,12 @@ export default function Dashboard() {
         }
       }
     }
+    setActiveId(null);
+  };
+
+  const handleDragStart = (event) => {
+    const { active } = event;
+    setActiveId(active?.id ?? null);
   };
 
   const handleTaskOpen = (task) => {
@@ -108,62 +166,100 @@ export default function Dashboard() {
       {/* Header */}
       <div className="px-6 py-4 bg-white dark:bg-slate-800 border-b dark:border-slate-700">
         <div className="flex items-center justify-between mb-4">
-          <h1 className="text-3xl font-bold dark:text-white">Dashboard</h1>
-          <button
-            onClick={() => setIsCreateOpen(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition"
-          >
-            <Plus size={20} />
-            New Task
-          </button>
+          <h1 className="text-3xl font-bold dark:text-white">
+            {activeView === 'team' ? 'Team Members' : activeView === 'my-tasks' ? 'My Tasks' : 'Dashboard'}
+          </h1>
         </div>
 
-        {/* Search & Filters */}
-        <div className="flex gap-3">
-          {/* Search */}
-          <div className="flex-1 relative">
-            <Search className="absolute left-3 top-2.5 text-gray-400" size={18} />
-            <input
-              type="text"
-              placeholder="Search tasks..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border rounded-lg dark:bg-slate-700 dark:border-slate-600 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
+        {activeView !== 'team' && (
+          <div className="flex items-center gap-3">
+            <div className="flex-1 relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+              <input
+                type="text"
+                placeholder="Search tasks..."
+                value={searchQuery}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                }}
+                className="w-full pl-10 pr-10 py-2 border rounded-lg bg-white dark:bg-slate-700 dark:border-slate-600 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              {!!searchQuery && (
+                <button
+                  type="button"
+                  onClick={clearBoardFilters}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-600"
+                >
+                  <X size={16} className="text-slate-500 dark:text-slate-300" />
+                </button>
+              )}
+            </div>
+
+            <select
+              value={priorityFilter}
+              onChange={(e) => {
+                setPriorityFilter(e.target.value);
+              }}
+              className="px-3 py-2 border rounded-lg bg-white dark:bg-slate-700 dark:border-slate-600 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="All">All Priorities</option>
+              <option value="Low">Low</option>
+              <option value="Medium">Medium</option>
+              <option value="High">High</option>
+            </select>
+
+            <select
+              value={statusFilter}
+              onChange={(e) => {
+                setStatusFilter(e.target.value);
+              }}
+              className="px-3 py-2 border rounded-lg bg-white dark:bg-slate-700 dark:border-slate-600 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="All">Status: All</option>
+              <option value="To Do">To Do</option>
+              <option value="In Progress">In Progress</option>
+              <option value="Done">Done</option>
+            </select>
+
+            <button
+              onClick={() => setIsCreateOpen(true)}
+              className="ml-auto flex items-center gap-2 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition"
+            >
+              <Plus size={20} />
+              New Task
+            </button>
           </div>
-
-          {/* Priority Filter */}
-          <select
-            value={priorityFilter}
-            onChange={(e) => setPriorityFilter(e.target.value)}
-            className="px-3 py-2 border rounded-lg dark:bg-slate-700 dark:border-slate-600 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option>All Priorities</option>
-            <option>Low</option>
-            <option>Medium</option>
-            <option>High</option>
-          </select>
-
-          {/* Status Filter */}
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="px-3 py-2 border rounded-lg dark:bg-slate-700 dark:border-slate-600 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option>Status: All</option>
-            <option>To Do</option>
-            <option>In Progress</option>
-            <option>Done</option>
-          </select>
-        </div>
+        )}
       </div>
 
-      {/* Kanban Board */}
-      <div className="flex-1 p-6 overflow-auto">
-        {loading ? (
+      {/* Main Content */}
+      <div className="flex-1 p-6 overflow-auto pb-24">
+        {activeView === 'team' ? (
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {teamMembers.map((member) => (
+              <div key={member.id} className="rounded-2xl bg-white dark:bg-slate-800 border dark:border-slate-700 p-4 flex items-center gap-4 shadow-sm">
+                <img
+                  src={getAvatarUrl(member)}
+                  alt={member.name}
+                  className="w-12 h-12 rounded-full"
+                />
+                <div>
+                  <p className="font-semibold text-slate-900 dark:text-white">{member.name}</p>
+                  <p className="text-sm text-slate-500 dark:text-slate-400">{member.email}</p>
+                  <p className="text-xs uppercase tracking-wide text-blue-600 dark:text-blue-400 mt-1">{member.role}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : loading ? (
           <SkeletonLoader />
         ) : (
-          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragStart={handleDragStart}
+            onDragEnd={handleDragEnd}
+          >
             <div className="grid grid-cols-3 gap-4 min-h-full">
               {Object.entries(groupedTasks).map(([status, statusTasks]) => (
                 <KanbanColumn
@@ -177,27 +273,56 @@ export default function Dashboard() {
                 />
               ))}
             </div>
+            <DragOverlay>
+              {activeId ? (
+                <TaskCard
+                  task={tasks.find((t) => String(t.id) === String(activeId))}
+                  isOverlay
+                  onOpen={() => {}}
+                />
+              ) : null}
+            </DragOverlay>
           </DndContext>
         )}
       </div>
 
       {/* Pagination */}
-      <div className="px-6 py-4 bg-white dark:bg-slate-800 border-t dark:border-slate-700 flex items-center justify-center gap-2">
-        <button
-          onClick={() => setSelectedPage(Math.max(1, selectedPage - 1))}
-          disabled={selectedPage === 1}
-          className="px-3 py-1 border rounded disabled:opacity-50 dark:border-slate-600 dark:text-slate-300"
-        >
-          Previous
-        </button>
-        <span className="px-3 py-1 dark:text-slate-300">Page {selectedPage}</span>
-        <button
-          onClick={() => setSelectedPage(selectedPage + 1)}
-          className="px-3 py-1 border rounded dark:border-slate-600 dark:text-slate-300"
-        >
-          Next
-        </button>
-      </div>
+      {activeView !== 'team' && (
+        <div className="sticky bottom-0 z-20 px-6 py-4 bg-white/95 dark:bg-slate-800/95 backdrop-blur border-t dark:border-slate-700 flex items-center justify-center gap-2">
+          <button
+            onClick={() => setSelectedPage(Math.max(1, selectedPage - 1))}
+            disabled={selectedPage === 1}
+            aria-label="Previous page"
+            className="w-10 h-10 inline-flex items-center justify-center border rounded-lg disabled:opacity-50 dark:border-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700"
+          >
+            <ChevronLeft size={18} />
+          </button>
+          <div className="flex items-center gap-2">
+            {pageNumbers.map((page) => (
+              <button
+                key={page}
+                type="button"
+                onClick={() => setSelectedPage(page)}
+                className={`w-10 h-10 rounded-lg border text-sm font-medium transition-colors ${
+                  page === selectedPage
+                    ? 'bg-blue-500 text-white border-blue-500'
+                    : 'border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
+                }`}
+              >
+                {page}
+              </button>
+            ))}
+          </div>
+          <button
+            onClick={() => setSelectedPage(Math.min(totalPages, selectedPage + 1))}
+            disabled={selectedPage >= totalPages}
+            aria-label="Next page"
+            className="w-10 h-10 inline-flex items-center justify-center border rounded-lg disabled:opacity-50 dark:border-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700"
+          >
+            <ChevronRight size={18} />
+          </button>
+        </div>
+      )}
 
       {/* Modals */}
       <TaskDetailModal
@@ -209,6 +334,7 @@ export default function Dashboard() {
           setIsDetailOpen(false);
         }}
         onDelete={handleTaskDelete}
+        currentUser={user}
       />
 
       <CreateTaskModal
