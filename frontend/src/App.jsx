@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useStore } from './store/useStore';
+import { api } from './lib/api';
 import { supabase } from './lib/supabase';
 import Sidebar from './components/Sidebar';
+import TopBar from './components/TopBar';
 import Dashboard from './pages/Dashboard';
 import LoginPage from './pages/LoginPage';
 import './index.css';
@@ -12,12 +14,25 @@ export default function App() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Check for stored token and authenticate
+    // Check for stored token and authenticate via API
     const token = localStorage.getItem('token');
-    if (token && user) {
-      setIsAuthenticated(true);
+    if (token) {
+      api.getMe(token).then((res) => {
+        if (res && res.user) {
+          useStore.getState().setUser(res.user);
+          setIsAuthenticated(true);
+        } else {
+          setIsAuthenticated(false);
+        }
+        setLoading(false);
+      }).catch(() => {
+        setIsAuthenticated(false);
+        setLoading(false);
+      });
+    } else {
+      setIsAuthenticated(false);
+      setLoading(false);
     }
-    setLoading(false);
   }, [user]);
 
   // Set up real-time subscriptions when authenticated
@@ -54,8 +69,11 @@ export default function App() {
     <div className={darkMode ? 'dark' : ''}>
       <div className="flex h-screen bg-gray-50 dark:bg-slate-900">
         <Sidebar />
-        <div className="flex-1 overflow-auto">
-          <Dashboard />
+        <div className="flex-1 flex flex-col overflow-auto">
+          <TopBar />
+          <div className="flex-1 overflow-auto">
+            <Dashboard />
+          </div>
         </div>
       </div>
     </div>

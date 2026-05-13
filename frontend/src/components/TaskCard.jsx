@@ -2,6 +2,9 @@ import React from 'react';
 import { format } from 'date-fns';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import { GripVertical } from 'lucide-react';
+import { useStore } from '../store/useStore';
+import { getAvatarUrl } from '../lib/avatar';
 
 const PriorityBadge = ({ priority }) => {
   const colors = {
@@ -24,10 +27,15 @@ const TagBadge = ({ tag }) => {
   );
 };
 
-export default function TaskCard({ task, onOpen }) {
+export default function TaskCard({ task, onOpen, isOverlay = false }) {
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({
     id: task.id
   });
+
+  const currentUser = useStore((s) => s.user);
+  const isMember = Boolean(
+    currentUser && task?.task_assignments?.some((a) => String(a.user_id) === String(currentUser.id))
+  );
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -40,14 +48,33 @@ export default function TaskCard({ task, onOpen }) {
     <div
       ref={setNodeRef}
       style={style}
-      {...attributes}
-      {...listeners}
-      onClick={() => onOpen(task)}
-      className="bg-white dark:bg-slate-800 rounded-lg p-4 shadow cursor-move hover:shadow-lg transition-shadow"
+      onClick={() => !isOverlay && onOpen && onOpen(task)}
+      className={`bg-white dark:bg-slate-800 rounded-lg p-4 shadow transition-shadow relative ${
+        !isOverlay ? 'cursor-pointer hover:shadow-lg' : 'scale-105 shadow-2xl pointer-events-none'
+      }`}
     >
+      {!isOverlay && (
+        <button
+          type="button"
+          aria-label="Drag task"
+          className="absolute top-2 right-2 p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-700 cursor-grab active:cursor-grabbing"
+          onClick={(event) => event.stopPropagation()}
+          {...attributes}
+          {...listeners}
+        >
+          <GripVertical size={16} className="text-slate-400" />
+        </button>
+      )}
+
       <div className="space-y-3">
-        {/* Title */}
-        <h3 className="font-semibold text-sm dark:text-white truncate">{task.title}</h3>
+        <div className="flex items-start gap-2 pr-8">
+          <h3 className="font-semibold text-sm dark:text-white truncate flex-1">{task.title}</h3>
+          {isMember && (
+            <span className="shrink-0 bg-blue-500 text-white text-xs px-2 py-0.5 rounded-full leading-none">
+              You
+            </span>
+          )}
+        </div>
 
         {/* Project & Tag */}
         <div className="flex items-center justify-between gap-2">
@@ -81,7 +108,7 @@ export default function TaskCard({ task, onOpen }) {
           {assignees.slice(0, 3).map((assignment) => (
             <img
               key={assignment.user_id}
-              src={assignment.users?.avatar_url || `https://i.pravatar.cc/150?img=${assignment.user_id}`}
+              src={getAvatarUrl(assignment.users || assignment)}
               alt={assignment.users?.name || 'User'}
               className="w-6 h-6 rounded-full border-2 border-white dark:border-slate-800"
               title={assignment.users?.name}
