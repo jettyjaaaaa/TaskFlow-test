@@ -25,6 +25,7 @@ export default function Dashboard() {
     loading,
     fetchTasks,
     fetchUsers,
+    fetchTasksAll,
     updateTask,
     deleteTask,
     setSelectedPage,
@@ -32,8 +33,11 @@ export default function Dashboard() {
     pagination,
     activeView,
     filters,
-    user
+    user,
+    setPageLimit
   } = useStore();
+  const { tasksAll } = useStore();
+  const [rowsPerColumn, setRowsPerColumn] = useState(3);
 
   const [selectedTask, setSelectedTask] = useState(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
@@ -42,6 +46,7 @@ export default function Dashboard() {
   const [statusFilter, setStatusFilter] = useState('All');
   const [priorityFilter, setPriorityFilter] = useState('All');
   const [activeId, setActiveId] = useState(null);
+  const [showAll, setShowAll] = useState(false);
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -52,14 +57,27 @@ export default function Dashboard() {
 
   // Fetch initial data
   useEffect(() => {
-    fetchTasks();
+    const computeAndSetLimit = async () => {
+      const vh = window.innerHeight;
+      const available = Math.max(600, vh - 300);
+      const rows = Math.max(3, Math.min(4, Math.floor(available / 260)));
+      const limit = rows * 3; 
+      setRowsPerColumn(rows);
+      setPageLimit(limit);
+      await fetchTasksAll();
+    };
+
+    computeAndSetLimit();
+    window.addEventListener('resize', computeAndSetLimit);
     fetchUsers();
+
+    return () => window.removeEventListener('resize', computeAndSetLimit);
   }, []);
 
   // Refetch when filters change
   useEffect(() => {
-    fetchTasks();
-  }, [filters, selectedPage]);
+    fetchTasksAll();
+  }, [filters, selectedPage, searchQuery, statusFilter, priorityFilter]);
 
   const clearBoardFilters = () => {
     setSearchQuery('');
@@ -98,15 +116,63 @@ export default function Dashboard() {
     });
   }, [tasks, searchQuery, statusFilter, priorityFilter]);
 
-  // Group tasks by status
-  const groupedTasks = {
-    'To Do': filteredTasks.filter(t => t.status === 'To Do'),
-    'In Progress': filteredTasks.filter(t => t.status === 'In Progress'),
-    'Done': filteredTasks.filter(t => t.status === 'Done')
-  };
+  // Group tasks by status using full dataset for per-column pagination
+  const allFiltered = useMemo(() => {
+    const normalizedSearch = searchQuery.toLowerCase().trim();
+    return (tasksAll || []).filter((task) => {
+      const assignees = task.task_assignments?.map((assignment) => assignment.users).filter(Boolean) || [];
+      const matchesStatus = statusFilter === 'All' || task.status === statusFilter;
+      const matchesPriority = priorityFilter === 'All' || task.priority === priorityFilter;
+
+      if (!normalizedSearch) {
+        return matchesStatus && matchesPriority;
+      }
+
+      const haystack = [
+        task.title,
+        task.description,
+        task.project_name,
+        task.tag,
+        task.priority,
+        task.status,
+        task.due_date,
+        ...assignees.map((assignee) => assignee.name),
+        ...assignees.map((assignee) => assignee.email)
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+
+      return matchesStatus && matchesPriority && haystack.includes(normalizedSearch);
+    });
+  }, [tasksAll, searchQuery, statusFilter, priorityFilter]);
+
+  const allGrouped = useMemo(() => ({
+    'To Do': allFiltered.filter(t => t.status === 'To Do'),
+    'In Progress': allFiltered.filter(t => t.status === 'In Progress'),
+    'Done': allFiltered.filter(t => t.status === 'Done')
+  }), [allFiltered]);
+
+  // compute total pages based on the tallest column
+  const totalPagesComputed = useMemo(() => {
+    const pagesPerCol = Object.values(allGrouped).map(col => Math.ceil((col.length || 0) / rowsPerColumn) || 0);
+    const maxPages = Math.max(1, ...pagesPerCol);
+    return maxPages;
+  }, [allGrouped, rowsPerColumn]);
+
+  const totalPages = totalPagesComputed;
+
+  const groupedTasks = useMemo(() => {
+    if (showAll) return allGrouped;
+    const start = (selectedPage - 1) * rowsPerColumn;
+    return {
+      'To Do': allGrouped['To Do'].slice(start, start + rowsPerColumn),
+      'In Progress': allGrouped['In Progress'].slice(start, start + rowsPerColumn),
+      'Done': allGrouped['Done'].slice(start, start + rowsPerColumn)
+    };
+  }, [allGrouped, selectedPage, rowsPerColumn, showAll]);
 
   const teamMembers = useMemo(() => users, [users]);
-  const totalPages = pagination?.pages || 1;
   const pageNumbers = useMemo(() => {
     const visiblePages = [];
     const start = Math.max(1, selectedPage - 1);
@@ -128,10 +194,27 @@ export default function Dashboard() {
     const { active, over } = event;
 
     if (over && over.id !== active.id) {
-      const task = tasks.find(t => t.id === active.id);
+      const task = (tasksAll || []).find(t => String(t.id) === String(active.id)) || tasks.find(t => String(t.id) === String(active.id));
       if (task) {
         try {
-          await updateTask(task.id, { status: over.id });
+          // Determine destination status: over.id may be a column id (status) or another task id
+          let destinationStatus = task.status;
+
+          const possibleStatuses = Object.keys(groupedTasks);
+          if (possibleStatuses.includes(String(over.id))) {
+            destinationStatus = over.id;
+          } else {
+            const targetTask = (tasksAll || []).find(t => String(t.id) === String(over.id)) || tasks.find(t => String(t.id) === String(over.id));
+            if (targetTask) {
+              destinationStatus = targetTask.status;
+            }
+          }
+
+          if (destinationStatus && destinationStatus !== task.status) {
+            await updateTask(task.id, { status: destinationStatus });
+            // Refresh tasks after a successful status update to ensure assignments and filters are consistent
+            await fetchTasksAll();
+          }
         } catch (error) {
           console.error('Error updating task:', error);
         }
@@ -142,7 +225,23 @@ export default function Dashboard() {
 
   const handleDragStart = (event) => {
     const { active } = event;
-    setActiveId(active?.id ?? null);
+    // Only set active overlay if the current user is a member of the task
+    const task = (tasksAll || []).find((t) => String(t.id) === String(active?.id)) || tasks.find((t) => String(t.id) === String(active?.id));
+    if (!task) {
+      setActiveId(null);
+      return;
+    }
+
+    const isMember = Boolean(
+      user && task?.task_assignments?.some((a) => String(a.user_id) === String(user.id))
+    );
+
+    if (isMember) {
+      setActiveId(active?.id ?? null);
+    } else {
+      // ignore drag start for non-members
+      setActiveId(null);
+    }
   };
 
   const handleTaskOpen = (task) => {
@@ -274,13 +373,13 @@ export default function Dashboard() {
               ))}
             </div>
             <DragOverlay>
-              {activeId ? (
-                <TaskCard
-                  task={tasks.find((t) => String(t.id) === String(activeId))}
-                  isOverlay
-                  onOpen={() => {}}
-                />
-              ) : null}
+                {activeId ? (
+                  <TaskCard
+                    task={(tasksAll || []).find((t) => String(t.id) === String(activeId))}
+                    isOverlay
+                    onOpen={() => {}}
+                  />
+                ) : null}
             </DragOverlay>
           </DndContext>
         )}
@@ -320,6 +419,22 @@ export default function Dashboard() {
             className="w-10 h-10 inline-flex items-center justify-center border rounded-lg disabled:opacity-50 dark:border-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700"
           >
             <ChevronRight size={18} />
+          </button>
+
+          <button
+            type="button"
+            onClick={async () => {
+              if (!showAll) {
+                await fetchTasksAll();
+                setShowAll(true);
+              } else {
+                await fetchTasks();
+                setShowAll(false);
+              }
+            }}
+            className="ml-4 px-3 py-2 border rounded-lg text-sm bg-white dark:bg-slate-700 hover:bg-slate-100 dark:hover:bg-slate-600"
+          >
+            {showAll ? 'Paginate' : 'Show all'}
           </button>
         </div>
       )}

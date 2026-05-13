@@ -52,23 +52,24 @@ export default function TaskCard({ task, onOpen, isOverlay = false }) {
       className={`bg-white dark:bg-slate-800 rounded-lg p-4 shadow transition-shadow relative ${
         !isOverlay ? 'cursor-pointer hover:shadow-lg' : 'scale-105 shadow-2xl pointer-events-none'
       }`}
+      {...(isMember ? attributes : {})}
+      {...(isMember ? listeners : {})}
     >
       {!isOverlay && (
         <button
           type="button"
-          aria-label="Drag task"
-          className="absolute top-2 right-2 p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-700 cursor-grab active:cursor-grabbing"
+          aria-label={isMember ? 'Drag task' : 'Not draggable'}
+          title={isMember ? 'Drag task' : 'Only assignees can drag this task'}
+          className={`absolute top-2 right-2 p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-700 ${isMember ? 'cursor-grab active:cursor-grabbing' : 'cursor-not-allowed opacity-60'}`}
           onClick={(event) => event.stopPropagation()}
-          {...attributes}
-          {...listeners}
         >
           <GripVertical size={16} className="text-slate-400" />
         </button>
       )}
 
-      <div className="space-y-3">
-        <div className="flex items-start gap-2 pr-8">
-          <h3 className="font-semibold text-sm dark:text-white truncate flex-1">{task.title}</h3>
+      <div className={`space-y-3`}>
+        <div className={`flex items-start gap-2 pr-8`}>
+          <h3 className={`font-semibold text-sm dark:text-white truncate flex-1`}>{task.title}</h3>
           {isMember && (
             <span className="shrink-0 bg-blue-500 text-white text-xs px-2 py-0.5 rounded-full leading-none">
               You
@@ -93,7 +94,7 @@ export default function TaskCard({ task, onOpen, isOverlay = false }) {
         </div>
 
         {/* Progress Bar */}
-        <div className="w-full bg-gray-200 dark:bg-slate-700 rounded-full h-1.5">
+        <div className={`w-full bg-gray-200 dark:bg-slate-700 rounded-full h-1.5`}>
           <div
             className="bg-blue-500 h-1.5 rounded-full"
             style={{ width: `${task.progress}%` }}
@@ -110,12 +111,12 @@ export default function TaskCard({ task, onOpen, isOverlay = false }) {
               key={assignment.user_id}
               src={getAvatarUrl(assignment.users || assignment)}
               alt={assignment.users?.name || 'User'}
-              className="w-6 h-6 rounded-full border-2 border-white dark:border-slate-800"
+              className={`w-6 h-6 rounded-full border-2 border-white dark:border-slate-800`}
               title={assignment.users?.name}
             />
           ))}
           {assignees.length > 3 && (
-            <div className="w-6 h-6 rounded-full border-2 border-white dark:border-slate-800 bg-gray-300 dark:bg-slate-600 flex items-center justify-center text-xs font-semibold">
+            <div className={`w-6 h-6 text-xs rounded-full border-2 border-white dark:border-slate-800 bg-gray-300 dark:bg-slate-600 flex items-center justify-center font-semibold`}>
               +{assignees.length - 3}
             </div>
           )}
