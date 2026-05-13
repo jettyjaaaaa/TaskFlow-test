@@ -51,28 +51,28 @@ A modern, full-stack task management application with real-time updates, user au
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                         TaskFlow System                          │
+│                         TaskFlow System                         │
 ├─────────────────────────────────────────────────────────────────┤
-│                                                                   │
-│  ┌──────────────────────┐          ┌──────────────────────┐    │
-│  │   FRONTEND (Vercel)  │          │  BACKEND (Render)    │    │
-│  │  - React + Vite      │◄────────►│  - Express.js        │    │
-│  │  - Zustand State     │   REST   │  - JWT Auth          │    │
-│  │  - Tailwind UI       │   API    │  - CORS Enabled      │    │
-│  └──────────────────────┘  /api/*  └──────────────────────┘    │
-│           │                                    │                  │
-│           │ Supabase                          │ Supabase          │
-│           │ Realtime                          │ Service Role      │
+│                                                                 │
+│  ┌──────────────────────┐          ┌──────────────────────┐     │
+│  │   FRONTEND (Vercel)  │          │  BACKEND (Render)    │     │
+│  │  - React + Vite      │◄────────►│  - Express.js        │     │
+│  │  - Zustand State     │   REST   │  - JWT Auth          │     │
+│  │  - Tailwind UI       │   API    │  - CORS Enabled      │     │
+│  └──────────────────────┘  /api/*  └──────────────────────┘     │
+│           │                                   │                 │
+│           │ Supabase                          │ Supabase        │
+│           │ Realtime                          │ Service Role    |
 │           └──────────────┬──────────────────┬─┘                 │
-│                          │                  │                    │
-│                   ┌──────▼──────────────────▼─────┐              │
-│                   │  Supabase PostgreSQL Database  │              │
-│                   │  - users table                 │              │
-│                   │  - tasks table                 │              │
-│                   │  - task_assignments table      │              │
-│                   │  - Realtime subscriptions      │              │
-│                   └────────────────────────────────┘              │
-│                                                                   │
+│                          │                  │                   │
+│                   ┌──────▼──────────────────▼─────┐             │
+│                   │  Supabase PostgreSQL Database │             │
+│                   │  - users table                │             │
+│                   │  - tasks table                │             │
+│                   │  - task_assignments table     │             │
+│                   │  - Realtime subscriptions     │             │ 
+│                   └───────────────────────────────┘             │
+│                                                                 │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -324,40 +324,6 @@ TaskFlow-test/
 
 ### Health
 - `GET /api/health` - Health check
-
----
-
-## 🐛 Troubleshooting
-
-### CORS Error on Login
-**Problem:** `CORS policy: Response to preflight request doesn't pass access control check`
-
-**Solution:** Ensure `FRONTEND_URL` in backend env doesn't have trailing slash:
-```env
-# ✅ Correct
-FRONTEND_URL=https://taskflow.jettyjaaaaa.space
-
-# ❌ Wrong
-FRONTEND_URL=https://taskflow.jettyjaaaaa.space/
-```
-
-### "supabaseUrl is required" Error
-**Problem:** Frontend crashes with Supabase init error
-
-**Solution:** Verify Vercel env vars are set:
-```env
-VITE_SUPABASE_URL=https://your-project.supabase.co
-VITE_SUPABASE_ANON_KEY=<your-anon-key>
-```
-Then redeploy (Vite env is build-time only).
-
-### Login Returns "Invalid Credentials"
-**Problem:** API responds 401 even with correct email/password
-
-**Solution:** 
-1. Check seed data exists: `SELECT * FROM users;` in Supabase
-2. Verify `SUPABASE_SERVICE_ROLE_KEY` is set in backend
-3. Check Row Level Security policies allow backend reads
 
 ---
 
