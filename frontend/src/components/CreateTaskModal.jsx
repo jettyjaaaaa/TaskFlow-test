@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
 import { useStore } from '../store/useStore';
+import { getAvatarUrl } from '../lib/avatar';
 
 export default function CreateTaskModal({ isOpen, onClose, onTaskCreated, task = null }) {
   const { createTask, updateTask, users } = useStore();
@@ -70,17 +71,17 @@ export default function CreateTaskModal({ isOpen, onClose, onTaskCreated, task =
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white dark:bg-slate-800 rounded-lg max-w-2xl w-full mx-4 shadow-lg max-h-96 overflow-y-auto">
-        <div className="flex items-center justify-between p-6 border-b dark:border-slate-700">
+      <div className="bg-white dark:bg-slate-800 rounded-lg max-w-2xl w-full mx-4 shadow-lg max-h-[80vh] overflow-hidden flex flex-col">
+        <div className="sticky top-0 z-10 flex items-center justify-between p-6 border-b dark:border-slate-700 bg-white dark:bg-slate-800">
           <h2 className="text-xl font-semibold dark:text-white">
             {task?.id ? 'Edit Task' : 'Create New Task'}
           </h2>
-          <button onClick={onClose} className="text-gray-500 hover:text-gray-700">
+          <button onClick={onClose} className="text-gray-500 hover:text-gray-700 p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-700">
             <X size={24} />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+        <form onSubmit={handleSubmit} className="p-6 space-y-4 overflow-y-auto flex-1">
           {/* Title */}
           <div>
             <label className="block text-sm font-medium dark:text-slate-300 mb-1">Title</label>
@@ -201,7 +202,7 @@ export default function CreateTaskModal({ isOpen, onClose, onTaskCreated, task =
                     className="rounded"
                   />
                   <img
-                    src={user.avatar_url}
+                    src={getAvatarUrl(user)}
                     alt={user.name}
                     className="w-5 h-5 rounded-full"
                   />
@@ -212,7 +213,7 @@ export default function CreateTaskModal({ isOpen, onClose, onTaskCreated, task =
           </div>
 
           {/* Submit */}
-          <div className="flex gap-2 pt-4 border-t dark:border-slate-700">
+          <div className="sticky bottom-0 -mx-6 px-6 py-3 border-t dark:border-slate-700 bg-white dark:bg-slate-800 flex gap-3">
             <button
               type="button"
               onClick={onClose}

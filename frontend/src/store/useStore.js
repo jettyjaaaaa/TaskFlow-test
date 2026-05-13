@@ -5,14 +5,17 @@ export const useStore = create((set, get) => ({
   user: null,
   tasks: [],
   users: [],
+  pagination: { page: 1, limit: 12, total: 0, pages: 1 },
   loading: false,
   error: null,
   darkMode: localStorage.getItem('darkMode') === 'true',
   selectedPage: 1,
+  activeView: 'dashboard',
   filters: {
     status: 'All',
     priority: 'All',
-    search: ''
+    search: '',
+    search_scope: 'summary'
   },
 
   // Auth actions
@@ -36,6 +39,8 @@ export const useStore = create((set, get) => ({
     set({ user: null, tasks: [] });
   },
 
+  setUser: (user) => set({ user }),
+
   // Task actions
   fetchTasks: async () => {
     set({ loading: true, error: null });
@@ -51,7 +56,11 @@ export const useStore = create((set, get) => ({
       const response = await api.getTasks(filters);
       if (response.error) throw new Error(response.error);
       
-      set({ tasks: response.data || [], loading: false });
+      set({
+        tasks: response.data || [],
+        pagination: response.pagination || { page: 1, limit: 12, total: 0, pages: 1 },
+        loading: false
+      });
       return response;
     } catch (error) {
       set({ error: error.message, loading: false });
@@ -124,6 +133,10 @@ export const useStore = create((set, get) => ({
 
   setSelectedPage: (page) => {
     set({ selectedPage: page });
+  },
+
+  setActiveView: (activeView) => {
+    set({ activeView });
   },
 
   setFilters: (filters) => {

@@ -6,10 +6,10 @@ const router = express.Router();
 // Get all tasks with assignees (for current user or admin)
 router.get('/', async (req, res) => {
   try {
-    const { status, priority, search, page = 1, limit = 12 } = req.query;
+    const { status, priority, search, search_scope = 'summary', page = 1, limit = 12 } = req.query;
     const offset = (page - 1) * limit;
 
-    let query = supabase
+    const { data: tasks, error } = await supabase
       .from('tasks')
       .select(`
         *,
@@ -18,32 +18,58 @@ router.get('/', async (req, res) => {
           user_id,
           users (id, name, avatar_url, email)
         )
-      `);
-
-    // Apply filters
-    if (status) {
-      query = query.eq('status', status);
-    }
-    if (priority) {
-      query = query.eq('priority', priority);
-    }
-    if (search) {
-      query = query.or(`title.ilike.%${search}%,description.ilike.%${search}%`);
-    }
-
-    const { data, error, count } = await query
-      .range(offset, offset + limit - 1)
+      `)
       .order('created_at', { ascending: false });
 
     if (error) throw error;
 
+    const normalizedSearch = search?.toLowerCase().trim();
+    const assignedUserId = req.query.assigned_user_id ? Number(req.query.assigned_user_id) : null;
+
+    const filtered = (tasks || []).filter((task) => {
+      const assignees = task.task_assignments?.map((assignment) => assignment.users).filter(Boolean) || [];
+      const matchesStatus = !status || task.status === status;
+      const matchesPriority = !priority || task.priority === priority;
+      const matchesAssignee = !assignedUserId || task.task_assignments?.some((assignment) => assignment.user_id === assignedUserId);
+
+      if (!normalizedSearch) {
+        return matchesStatus && matchesPriority && matchesAssignee;
+      }
+
+      const summaryHaystack = [task.title, task.priority, task.status]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+
+      const fullHaystack = [
+        task.title,
+        task.description,
+        task.project_name,
+        task.tag,
+        task.priority,
+        task.status,
+        task.due_date,
+        ...assignees.map((assignee) => assignee.name),
+        ...assignees.map((assignee) => assignee.email)
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+
+      const haystack = search_scope === 'full' ? fullHaystack : summaryHaystack;
+
+      return matchesStatus && matchesPriority && matchesAssignee && haystack.includes(normalizedSearch);
+    });
+
+    const pagedTasks = filtered.slice(offset, offset + Number(limit));
+
     res.json({
-      data,
+      data: pagedTasks,
       pagination: {
         page: parseInt(page),
         limit: parseInt(limit),
-        total: count,
-        pages: Math.ceil(count / limit)
+        total: filtered.length,
+        pages: Math.ceil(filtered.length / limit)
       }
     });
   } catch (error) {
@@ -160,7 +186,23 @@ router.put('/:id', async (req, res) => {
       }
     }
 
-    res.json(task);
+    // Return full task with assignments
+    const { data: fullTask, error: fullError } = await supabase
+      .from('tasks')
+      .select(`
+        *,
+        task_assignments (
+          id,
+          user_id,
+          users (id, name, avatar_url, email)
+        )
+      `)
+      .eq('id', req.params.id)
+      .single();
+
+    if (fullError) throw fullError;
+
+    res.json(fullTask);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
